@@ -54,59 +54,63 @@ OUTPUTS:
 	** Part 0: Create globals for directories and files 
 ********************************************************************************
 
+
 clear all
 set more off				
 
 	* Input files
 	
-		global Fees_Outpatient_final		 "${KePSIE_DB}/Endline/DataSets/Intermediate/Fees_Outpatient_clean_end.dta"
+	global Fees_Outpatient_final		 "C:/Users/`c(username)'/Dropbox/Peer Review 2018 - CDD/Thomas_Data/Fees_Outpatient_clean_end.dta"
 
 	
 	* Output files: 
-	 if "`c(username)'" == "Thomas" { // Outputs are saved in Dropbox
 	 
-		global Av_Outpatient 	"${KePSIE_DB}/Endline/DataSets/Intermediate/Averages_Outpatient_end.dta"
-	 	}
+	global Av_Outpatient 			"C:/Users/`c(username)'/Dropbox/Peer Review 2018 - CDD/Thomas_Data/Averages_Outpatient_end.dta"
 
-	if "`c(username)'" != "Thomas" { // Outputs are saved in local GitHub
-		global Av_Outpatient 	"${end_dt}/Intermediate/Averages_Outpatient_end.dta"				
-		}
 
 
 		use "${Fees_Outpatient_final}", clear
 
 
 *Defining locals needed for the do file
+*Number of days per month depending on how many days the facility is open 
+*November
 local days_a 		= 30
 local days_a_6dw 	= 26 //assuming not working on sundays
 local days_a_5dw 	= 22 //assuming not working on saturdays and sundays
 local days_a_4dw 	= 18 //assuming not working on Mondays, saturdays and sundays
 
+*December
 local days_b 		= 31
 local days_b_6dw 	= 26 //assuming not working on sundays
 local days_b_5dw 	= 21 //assuming not working on saturdays and sundays
 local days_b_4dw 	= 17 //assuming not working on Mondays, saturdays and sundays
 
+*January
 local days_c 		= 31
 local days_c_6dw 	= 27 //assuming not working on sundays
 local days_c_5dw 	= 23 //assuming not working on saturdays and sundays
 local days_c_4dw 	= 19 //assuming not working on Mondays, saturdays and sundays
 
+*February
 local days_d 		= 28
 local days_d_6dw 	= 24 //assuming not working on sundays
 local days_d_5dw 	= 20 //assuming not working on saturdays and sundays
 local days_d_4dw 	= 16 //assuming not working on Mondays, saturdays and sundays
 
+*March
 local days_e 		= 31
 local days_e_6dw 	= 27 //assuming not working on sundays
 local days_e_5dw 	= 22 //assuming not working on saturdays and sundays
 local days_e_4dw 	= 18 //assuming not working on Mondays, saturdays and sundays
 
+*April
 local days_f 		= 30
 local days_f_6dw 	= 25 //assuming not working on sundays
 local days_f_5dw 	= 21 //assuming not working on saturdays and sundays
 local days_f_4dw 	= 16 //assuming not working on Mondays, saturdays and sundays
 
+*May
 local days_g 		= 31
 local days_g_6dw 	= 27 //assuming not working on sundays
 local days_g_5dw 	= 23 //assuming not working on saturdays and sundays
