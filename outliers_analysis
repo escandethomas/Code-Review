@@ -1,0 +1,551 @@
+/*******************************************************************************	
+
+Project:  		KePSIE
+Created on:  	Oct 30, 2018
+Last udpate on: Nov 9, 2018
+
+Written by:  	Thomas Escande (tescande@worldbank.org)
+
+Revision: 		
+
+********************************************************************************			
+
+THIS DO FILE: 	This do-file construct the average demand outcomes and deals with outliers 
+
+
+CONTENT:		Part 0 - Create globals for directories and files and locals to be used throughout the do file
+				Part 1 - Looking at 0 and putting them to missing when issues
+				Part 2 - Estimation of daily data from other sources 
+						2.1 Estimation from weekly data sources
+						2.2 Estimation from daily data sources
+						2.3 Inputing daily data in weekly data
+				Part 3: Set all data from 2017 as missing for facilities which started in 2018
+				Part 4: Constructing daily averages variables from monthly source with no missing days
+						4.1 Set as untrustful months with days of missing data
+						4.2 Get the daily average variables from the non missing months
+				Part 5: Inputing when some days are missing, for 5 or 10 missing days
+						5.1 Set as untrustful months when at least 5 or 10 days are missing
+						5.2 Get the daily average variables from the non missing months
+				Part 6: Variables inputing any number of missing days
+						6.1 Identifying extrem untrustful observation - no rule for now, just observation 
+						6.2 Get the daily average variables from the non missing months
+				Part 7: Identifying outliers from the 8 sources of data : 7 months plus weekly 
+				Part 8: Inputing with average from other data sources
+				Part 9: Taking the averages
+				Part 10: Renaming main variables we are going to use later
+				Part 11: Save dataset
+
+
+INPUTS:     	* Cleaned data taken from the fees/ outpatient demand cleaned database
+				"${KePSIE_DB}/Endline/DataSets/Intermediate/Fees_Outpatient_clean_end.dta"
+
+
+OUTPUTS:     	
+				* Dropbox files: Latest versions created by person in charge (Thomas Escande)
+				
+					* Database with final outpatient outcomes ready for analysis
+					"${KePSIE_DB}/Endline/DataSets/Intermediate/Averages_Outpatient_end.dta"
+					
+				
+				* Local files: Produced when running this code and saved in your local GitHub folder
+				
+					* Database with final outpatient outcomes ready for analysis
+					"${end_dt}/Intermediate/Averages_Outpatient_end.dta"
+					
+
+*******************************************************************************/
+
+********************************************************************************
+	** Part 0: Create globals for directories and files 
+********************************************************************************
+
+clear all
+set more off				
+
+	* Input files
+	
+		global Fees_Outpatient_final		 "${KePSIE_DB}/Endline/DataSets/Intermediate/Fees_Outpatient_clean_end.dta"
+
+	
+	* Output files: 
+	 if "`c(username)'" == "Thomas" { // Outputs are saved in Dropbox
+	 
+		global Av_Outpatient 	"${KePSIE_DB}/Endline/DataSets/Intermediate/Averages_Outpatient_end.dta"
+	 	}
+
+	if "`c(username)'" != "Thomas" { // Outputs are saved in local GitHub
+		global Av_Outpatient 	"${end_dt}/Intermediate/Averages_Outpatient_end.dta"				
+		}
+
+
+		use "${Fees_Outpatient_final}", clear
+
+
+*Defining locals needed for the do file
+*Number of days per month depending on the number of opening days
+*November
+local days_a 		= 30
+local days_a_6dw 	= 26 //assuming not working on sundays
+local days_a_5dw 	= 22 //assuming not working on saturdays and sundays
+local days_a_4dw 	= 18 //assuming not working on Mondays, saturdays and sundays
+
+*December
+local days_b 		= 31
+local days_b_6dw 	= 26 //assuming not working on sundays
+local days_b_5dw 	= 21 //assuming not working on saturdays and sundays
+local days_b_4dw 	= 17 //assuming not working on Mondays, saturdays and sundays
+
+*January
+local days_c 		= 31
+local days_c_6dw 	= 27 //assuming not working on sundays
+local days_c_5dw 	= 23 //assuming not working on saturdays and sundays
+local days_c_4dw 	= 19 //assuming not working on Mondays, saturdays and sundays
+
+*February
+local days_d 		= 28
+local days_d_6dw 	= 24 //assuming not working on sundays
+local days_d_5dw 	= 20 //assuming not working on saturdays and sundays
+local days_d_4dw 	= 16 //assuming not working on Mondays, saturdays and sundays
+
+*March
+local days_e 		= 31
+local days_e_6dw 	= 27 //assuming not working on sundays
+local days_e_5dw 	= 22 //assuming not working on saturdays and sundays
+local days_e_4dw 	= 18 //assuming not working on Mondays, saturdays and sundays
+
+*April
+local days_f 		= 30
+local days_f_6dw 	= 25 //assuming not working on sundays
+local days_f_5dw 	= 21 //assuming not working on saturdays and sundays
+local days_f_4dw 	= 16 //assuming not working on Mondays, saturdays and sundays
+
+*May
+local days_g 		= 31
+local days_g_6dw 	= 27 //assuming not working on sundays
+local days_g_5dw 	= 23 //assuming not working on saturdays and sundays
+local days_g_4dw 	= 19 //assuming not working on Mondays, saturdays and sundays
+
+
+
+
+*Variable useful to know how many observations were put to missing in each case.
+foreach month in a b c d e f g {
+	gen id_change_`month'=0 if !mi(outpatient_`month')
+	}
+
+****************************************************************************************************
+*Part 1: Looking at untrustful 0 and put them to missing
+****************************************************************************************************
+*Creating a variable with all the 0, original variables
+foreach month in a b c d e f g {
+	gen outpatient_original_`month' = outpatient_`month'
+}
+
+global outpatient  outpatient_w outpatient_a outpatient_b outpatient_c outpatient_d outpatient_e outpatient_f outpatient_g	
+
+*We can look at 0 for outpatient variable. 0 can only happen if the facility is of small size. Put to missing when there is a doubt. 
+
+	egen outpatient_max = rowmax($outpatient)
+	egen outpatient_min = rowmin($outpatient)
+
+list hfid outpatient_dm1 outpatient_dm2 $outpatient if outpatient_min == 0
+
+*Facilities with only 0 for all months recorded - put to missing for now as not working / closed: 12028, 510110, 514060, 518010, 515060 , 900641
+*Facilities with missing for all months and 0 for previous week/previous days: 515010, 515090, 516030, 516070, 519070 (0 for all months), 555571, 900274, 900498, 901428    
+
+*12028 : 25 for weekly, 0 for all months a b c d | 510110 70 for weekly, 0 for a b c d | 514060 40 for weekly, 0 for c d e f | 515060, 30 for weekly and 0 for c d e f
+foreach month in a b c d {
+	replace outpatient_`month' = .q if hfid == 12028 | hfid == 510110 | hfid == 900641 
+	}
+
+foreach month in c d e f {
+	replace outpatient_`month' = .q if hfid == 514060 | hfid == 515060 | hfid == 518010
+	}
+
+* 510020 : 200 for c, 201 for d and 0 for a and b 
+foreach month in a b {
+	replace outpatient_`month' = .q if hfid == 510020
+	}
+
+*510130 : 33 for weekly, 86 for d, 0 for a b c 
+foreach month in a b c {
+	replace outpatient_`month' = .q if hfid == 510130
+	}
+
+* 510130 : 22 for weekly, 159 for c, 130 for d and 0 for a and b 
+foreach month in a b {
+	replace outpatient_`month' = .q if hfid == 510130
+	}
+
+* 555595 : 70 for weekly, 189 for d,  0 for a b and c 
+foreach month in a b c {
+	replace outpatient_`month' = .q if hfid == 555595
+	}
+
+* 555617 : 93 for weekly, 906 for c and 1096 for d, 0 for a b  
+foreach month in a b {
+	replace outpatient_`month' = .q if hfid == 555617
+	}
+
+* 588112 : 10 for weekly, 93 for c and 102 for d, 0 for a b  
+foreach month in a b {
+	replace outpatient_`month' = .q if hfid == 588112
+	}
+
+* 800007 : 22 for weekly, 104 for d, 0 for a b c 
+foreach month in a b c {
+	replace outpatient_`month' = .q if hfid == 800007
+	}
+
+* 800029 : 14 for weekly, 88 for b, missing for c d, 0 for a
+foreach month in a {
+	replace outpatient_`month' = .q if hfid == 800029
+	}
+
+* 900317 : 20 for weekly, 53 for a, 61 for c d, 0 for b
+foreach month in b {
+	replace outpatient_`month' = .q if hfid == 900317
+	}
+
+* 900860 : 30 for weekly, 242 for c and 183 for d, 0 for a b  
+foreach month in a b {
+	replace outpatient_`month' = .q if hfid == 900860
+	}
+
+
+****************************************************************************************************
+*Part 2 - Estimation of daily data from other sources 
+****************************************************************************************************
+
+	*--------------------------------------------------------*
+	* 2.1 Estimation from weekly data sources
+	*--------------------------------------------------------*
+
+*Estimate the daily average using the number of patients over the last week divided by the number of days the facility is open
+gen 		day_w = outpatient_w / daysopen
+label var 	day_w "average daily outpatient from weekly data"
+
+	*--------------------------------------------------------*
+	* 2.2 Estimation from daily data sources
+	*--------------------------------------------------------*
+gen 		day_d = (outpatient_dm1 + outpatient_dm2) / 2
+label var 	day_d "average daily outpatient from daily data"
+
+	*--------------------------------------------------------*
+	* 2.3 Inputing daily in weekly as we trust weekly more
+	*--------------------------------------------------------*
+replace 	day_w = day_d if mi(day_w) & !mi(day_d)
+
+
+****************************************************************************************************
+*Part 3: Set all data from 2017 as missing for facilities which started in 2018
+****************************************************************************************************
+tab outpatient_a if startyear == 2018 
+tab outpatient_b if startyear == 2018 
+*6 facilities have 0 and three facilities (18728, 510120, 588101) have positive numbers. 
+
+foreach month in a b {
+	replace id_change_`month'  = 1  if startyear == 2018 & outpatient_`month' == 0	 & !mi(id_change_`month')
+	replace outpatient_`month' = .  if startyear == 2018 & outpatient_`month' == 0
+
+	replace id_change_`month'  = 1  if startyear == 2018 & outpatient_`month' >  0 & !mi(outpatient_`month') & !mi(id_change_`month')
+	replace outpatient_`month' = .q if startyear == 2018 & outpatient_`month' >  0 & !mi(outpatient_`month')
+}
+
+****************************************************************************************************
+*Part 4: Constructing daily averages variables from monthly source with no missing days
+****************************************************************************************************
+
+	*--------------------------------------------------------*
+	* 4.1 Set as untrustful months with days of missing data *
+	*--------------------------------------------------------*
+
+foreach month in a b c d e f g {
+	gen 	  outpatient_complete_`month' 	= outpatient_`month' 
+	replace   outpatient_complete_`month' 	= .q   					if !mi(outpatient_miss_`month') & outpatient_miss_`month' > 0 
+	replace   id_change_`month'  			= 2 					if !mi(outpatient_miss_`month') & outpatient_miss_`month' > 0  & !mi(id_change_`month')
+
+	label var outpatient_complete_`month'  "$`month':Monthly outpatients without missing data" 
+}
+
+*Number of months missing per facilities
+	gen month_partial_complete = 0
+	gen month_complete = 0
+
+	label var month_partial_complete  	"Number of months with some data"
+	label var month_complete 			"Number of months complete"
+
+	foreach month in a b c d e f g {
+		replace month_partial_complete 	= month_partial_complete + 1 	if !mi(outpatient_`month') 		
+		replace month_complete 			= month_complete + 1 			if !mi(outpatient_complete_`month') 	
+			}
+
+	*--------------------------------------------------------------*
+	* 4.2 Get the daily average variables from the complete months *
+	*--------------------------------------------------------------*
+
+	*Averaging over each month
+foreach month in a b c d e f g {
+	gen 	outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'' 	    if daysopen == 7  
+	replace outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'_6dw'  if daysopen == 6 | mi(daysopen)  
+	replace outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'_5dw'  if daysopen == 5  
+	replace outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'_4dw'  if daysopen <= 4  
+}
+
+****************************************************************************************************
+*Part 5: Inputing when some days are missing, for 5 or 10 missing days
+****************************************************************************************************
+*Setting locals for later on
+local cut_miss_5  = 5
+local cut_miss_10 = 10
+
+	*--------------------------------------------------------*
+	* 5.1 Set as untrustful months when at least 5 or 10 days are missing*
+	*--------------------------------------------------------*
+foreach cut in `cut_miss_5' `cut_miss_10' {
+
+	foreach month in a b c d e f g {
+		gen 	  outpatient_miss`cut'_`month' 	= outpatient_`month' 
+		replace   outpatient_miss`cut'_`month' 	= .q   					if !mi(outpatient_miss_`month') & outpatient_miss_`month' > `cut' 
+
+		label var outpatient_miss`cut'_`month'  "$`month':Monthly outpatients with less than `cut' days of missing data" 
+	}
+
+*Number of months missing per facilities
+		gen month_miss`cut' = 0
+		label var month_miss`cut' 				"Number of months with less than `cut' days of missing data"
+
+	foreach month in a b c d e f g {	
+		replace month_miss`cut' 			= month_miss`cut' + 1 			if !mi(outpatient_miss`cut'_`month') 	
+	}
+
+	*--------------------------------------------------------------*
+	* 5.2 Get the daily average variables from the complete months *
+	*--------------------------------------------------------------*
+
+	*Averaging over each month
+foreach month in a b c d e f g {
+	gen 	miss_day_`cut'_`month' = 0
+	replace miss_day_`cut'_`month' = outpatient_miss_`month' if !mi(outpatient_miss_`month') & outpatient_miss_`month' <= `cut'
+
+	gen 	outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'' - miss_day_`cut'_`month')  	  if daysopen == 7  
+	replace outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'_6dw'- miss_day_`cut'_`month')  if daysopen == 6 | mi(daysopen)  
+	replace outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'_5dw'- miss_day_`cut'_`month')  if daysopen == 5  
+	replace outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'_4dw'- miss_day_`cut'_`month')  if daysopen <= 4  
+	}
+
+
+}
+
+tab month_miss5
+tab month_miss10
+
+****************************************************************************************************
+*Part 6: Variables inputing any number of missing days
+****************************************************************************************************
+*Only for 36 observations with missing days more than 10. When the number is consistent with the others, keep it, otherwise set to 0. 
+
+	foreach month in a b c d e f g {
+		gen 	  outpatient_missall_`month' 	= outpatient_`month' 
+		label var outpatient_missall_`month' "$`month':Monthly outpatients inputting all missing data"
+	}
+
+	*--------------------------------------------------------------*
+	* 6.1 Identifying extrem untrustful observation - no rule for now, just observation *
+	*--------------------------------------------------------------*
+
+	replace outpatient_missall_b = .q if hfid == 12070 // 70 outpatient for the month while the other sources give something closer to 150
+	replace outpatient_missall_c = .q if hfid == 16572 //29 missing days, estimation of 30 000 while outseven gives around 130
+	replace outpatient_missall_a = .q if hfid == 17065
+	replace outpatient_missall_b = .q if hfid == 17065 // estimation 80, other sources give between 170 and 800
+	replace outpatient_missall_f = .q if hfid == 500032 //estimation 50, other sources give 20
+	replace outpatient_missall_a = .q if hfid == 513040 // estimation 20, other sources give 60
+	replace outpatient_missall_b = .q if hfid == 555562 // estimation 6, other sources give 20
+	replace outpatient_missall_a = .q if hfid == 900452 // Estimation 4, other sources give 10
+	replace outpatient_missall_d = .q if hfid == 901236 // Estimation 750, other sources give 100
+	replace outpatient_missall_c = .q if hfid == 901911 // Estimation 100, other sources give between 100 and 200 
+	replace outpatient_missall_d = .q if hfid == 21319 //more missing days than opening days
+	replace outpatient_missall_a = .q if hfid == 555568 //more missing days than opening days
+	replace outpatient_missall_a = .q if hfid == 555587 //more missing days than opening days
+
+	*--------------------------------------------------------------*
+	* 6.2 Get the daily average variables from the non missing months *
+	*--------------------------------------------------------------*
+	local cut all
+
+foreach month in a b c d e f g {
+	gen 	miss_day_all_`month' = 0
+	replace miss_day_all_`month' = outpatient_miss_`month' if !mi(outpatient_miss_`month') & !mi(outpatient_missall_`month')
+
+	gen 	outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'' - miss_day_`cut'_`month')  	  if daysopen == 7  
+	replace outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'_6dw'- miss_day_`cut'_`month')  if daysopen == 6 | mi(daysopen)  
+	replace outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'_5dw'- miss_day_`cut'_`month')  if daysopen == 5  
+	replace outpatient_miss`cut'_d_`month' = outpatient_miss`cut'_`month' / (`days_`month'_4dw'- miss_day_`cut'_`month')  if daysopen <= 4  
+
+	drop miss_day_all_`month'
+	}
+
+
+****************************************************************************************************
+*Part 7: Identifying outliers from the 8 sources of data : 7 months plus weekly
+****************************************************************************************************
+//Done it first as after that we input the average so it would be an issue
+	foreach type in complete miss5 miss10 missall {
+
+global `type' day_w outpatient_`type'_d_a outpatient_`type'_d_b outpatient_`type'_d_c outpatient_`type'_d_d outpatient_`type'_d_e outpatient_`type'_d_f outpatient_`type'_d_g
+	
+	}
+
+*Generating all the useful variables: mean, mean without the observation, absolute distance from the min to observation, relative distance from the min to observation
+	foreach type in complete miss5 miss10 missall {
+
+	egen month_data_`type'     = rownonmiss($`type') 
+	tab month_data_`type'		
+	egen outpatient_`type'_av  = rowmean($`type')
+
+	
+
+		foreach month in a b c d e f g {
+			*Variable useful to know how many observations were put to missing in each case.
+			gen 	flag_`type'_`month' 		  = 0 if !mi(outpatient_`type'_d_`month')
+
+			gen 	av_minus_data_`type'_`month'  = (outpatient_`type'_av - outpatient_`type'_d_`month'/month_data_`type') * (month_data_`type'/(month_data_`type'-1)) if month_data_`type' > 2
+			
+			gen 	diff_to_av_`type'_`month'     = (outpatient_`type'_d_`month' - av_minus_data_`type'_`month')  if outpatient_`type'_d_`month' > av_minus_data_`type'_`month'
+			replace diff_to_av_`type'_`month'     = -(outpatient_`type'_d_`month' - av_minus_data_`type'_`month') if outpatient_`type'_d_`month' <= av_minus_data_`type'_`month'
+
+			gen	    dist_to_av_`type'_`month'_max = diff_to_av_`type'_`month' / av_minus_data_`type'_`month' if outpatient_`type'_d_`month' > av_minus_data_`type'_`month'  & month_data_`type' > 2 
+			gen 	dist_to_av_`type'_`month'_min = diff_to_av_`type'_`month'/ outpatient_`type'_av 		 if outpatient_`type'_d_`month' <= av_minus_data_`type'_`month' & month_data_`type' > 2 
+
+		}
+
+
+*******Identifying outliers and replacing them with the mean without the observation. 3 main rules: 
+*1.Replace at most one observation per facility, the furthest one.
+*2.If observation is a max, then outliers when the relative distance to the mean without observation is more than 2
+*3.If observation is a min, then outliers when the ratio of ditance to the mean without average to the mean is more than 1
+
+global `type'2 diff_to_av_`type'_a diff_to_av_`type'_b diff_to_av_`type'_c diff_to_av_`type'_d diff_to_av_`type'_e diff_to_av_`type'_f diff_to_av_`type'_g
+ 
+		egen outpatient_`type'_max = rowmax($`type'2)
+
+		foreach month in a b c d e f g {
+			count 									if dist_to_av_`type'_`month'_max > 2 & !mi(dist_to_av_`type'_`month'_max) //change 63 observations in total, 5% of facilities impacted 
+			gen  	outpatient_`type'_noo_d_`month' = outpatient_`type'_d_`month'
+			replace outpatient_`type'_noo_d_`month' = av_minus_data_`type'_`month' if dist_to_av_`type'_`month'_max > 2 & !mi(dist_to_av_`type'_`month'_max) & diff_to_av_`type'_`month' == outpatient_`type'_max
+			replace outpatient_`type'_noo_d_`month' = av_minus_data_`type'_`month' if dist_to_av_`type'_`month'_min > 1 & !mi(dist_to_av_`type'_`month'_min) & diff_to_av_`type'_`month' == outpatient_`type'_max
+
+			*Flagging observations which have been changed 
+			replace flag_`type'_`month' = 1 if dist_to_av_`type'_`month'_max > 2 & !mi(dist_to_av_`type'_`month'_max) & diff_to_av_`type'_`month' == outpatient_`type'_max
+			replace flag_`type'_`month' = 1 if dist_to_av_`type'_`month'_min > 1 & !mi(dist_to_av_`type'_`month'_min) & diff_to_av_`type'_`month' == outpatient_`type'_max
+		}
+
+		gen flag_`type' = 0
+		replace flag_`type' = 1 if flag_`type'_a == 1 | flag_`type'_b == 1 | flag_`type'_c == 1 | flag_`type'_d == 1 | flag_`type'_e == 1 | flag_`type'_f == 1 | flag_`type'_g == 1
+		list hfid $`type' if flag_`type' == 1
+}
+
+*Generating ratio min max to look for other outliers. The ones which still have high ratio are small facilities or high volatility facilities
+foreach type in complete_noo miss5_noo miss10_noo missall_noo {
+global `type' outpatient_`type'_d_a outpatient_`type'_d_b outpatient_`type'_d_c outpatient_`type'_d_d outpatient_`type'_d_e outpatient_`type'_d_f outpatient_`type'_d_g
+
+
+	egen outpatient_`type'_max = rowmax($`type')
+	egen outpatient_`type'_min = rowmin($`type')
+
+	gen ratio_maxmin_`type' = outpatient_`type'_max / outpatient_`type'_min  
+	hist ratio_maxmin_`type', freq
+}
+
+
+
+****************************************************************************************************
+*Part 8: Inputing with average from other data sources
+****************************************************************************************************
+	foreach type in complete miss5 miss10 missall {
+
+global `type' day_w outpatient_`type'_d_a outpatient_`type'_d_b outpatient_`type'_d_c outpatient_`type'_d_d outpatient_`type'_d_e outpatient_`type'_d_f outpatient_`type'_d_g
+	
+	egen  outpatient_`type'_d_av   = rowmean($`type')
+	egen  obs_missing_`type'_w     = rownonmiss($`type')
+
+		foreach month in a b c d e f g {
+			gen 	outpatient_`type'_input_d_`month' = outpatient_`type'_d_`month'
+			replace outpatient_`type'_input_d_`month' = outpatient_`type'_d_av if mi(outpatient_`type'_d_`month')
+		}
+
+count if obs_missing_`type'_w == 1  & !mi(day_w) //Most of the data come from the weekly anyway, 131 out of 155 or 169 for Januray or February
+
+	}
+ 
+
+
+****************************************************************************************************
+*Part 9: Taking the averages
+****************************************************************************************************
+	foreach type in complete_noo miss5_noo miss10_noo missall_noo  {
+
+global `type'  outpatient_`type'_d_a outpatient_`type'_d_b outpatient_`type'_d_c outpatient_`type'_d_d outpatient_`type'_d_e outpatient_`type'_d_f outpatient_`type'_d_g
+	
+	egen    outpatient_`type'_d_av   = rowmean($`type')
+	replace outpatient_`type'_d_av   = day_w              if mi(outpatient_`type'_d_av)
+
+	}
+
+
+****************************************************************************************************
+*Part 10: Renaming main variables we are going to use later
+****************************************************************************************************
+*Renamed using the standardisation described in KePSIE_DataDictionary excel file
+
+global a nov
+global b dec
+global c jan 
+global d feb 
+global e mar 
+global f apr
+global g may
+
+foreach month in a b c d e f g {
+	rename 		outpatient_complete_d_`month'  			outpatient_complete_d_$`month' 
+	rename 		outpatient_missall_input_d_`month'		outpatient_missall_input_d_$`month'
+}
+
+
+global nov November(2017)
+global dec December(2017)
+global jan January(2018) 
+global feb February(2018) 
+global mar March(2018) 
+global apr April(2018) 
+global may May(2018) 
+
+
+foreach month in nov dec jan feb mar apr may {
+	rename 		outpatient_complete_d_`month' 		outpatients_completemonth_`month'_d
+	label var 	outpatients_completemonth_`month'_d "Daily Outpatients - $`month' (Monthly Complete Records)"
+
+	rename 		outpatient_missall_input_d_`month' 	outpatients_allsources_`month'_d
+	label var 	outpatients_allsources_`month'_d 	"Daily Outpatients - $`month' (All Sources)"
+}
+
+
+rename 			outpatient_missall_noo_d_av				outpatients_allsources_mean_d 
+label var 		outpatients_allsources_mean_d 		"Daily Outpatients - Average Available Months (All Sources)"
+
+
+********************************************************************************
+*Part 11: Save dataset
+********************************************************************************	
+
+	if c(stata_version)>=14 {
+		saveold "${Av_Outpatient}", replace v(13)
+	}
+	else {
+		save "${Av_Outpatient}", replace
+	}
+	
+
+************************************************End of do file****************************************************
+
+
