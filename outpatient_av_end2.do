@@ -78,11 +78,11 @@ set more off
 		}
 
 	if c(username) == "Julie" {
-		global  thimoRexa `"/users/`c(username)'/dropbox/Peer Review 2018/Thomas_Data"'
+		global  Av_Outpatient `"/users/`c(username)'/dropbox/Peer Review 2018/Thomas_Data"'
 	}
 
 		*use "${Fees_Outpatient_final}", clear
-		use "${Fees_Outpatient_clean_end}", clear
+		use "$Av_Outpatient/Fees_Outpatient_clean_end", clear
 
 *Defining locals needed for the do file
 *Number of days per month depending on the number of opening days
@@ -176,10 +176,12 @@ foreach month in a b c {
 	}
 
 * 510130 : 22 for weekly, 159 for c, 130 for d and 0 for a and b 
-foreach month in a b {
-	replace outpatient_`month' = .q if hfid == 510130
-	}
+*foreach month in a b {
+*	replace outpatient_`month' = .q if hfid == 510130
+*	}
 
+*Repetition of the hfid	
+	
 * 555595 : 70 for weekly, 189 for d,  0 for a b and c 
 foreach month in a b c {
 	replace outpatient_`month' = .q if hfid == 555595
@@ -215,6 +217,7 @@ foreach month in a b {
 	replace outpatient_`month' = .q if hfid == 900860
 	}
 
+	*What about 519070 ?
 
 ****************************************************************************************************
 *Part 2 - Estimation of daily data from other sources 
@@ -228,12 +231,30 @@ foreach month in a b {
 gen 		day_w = outpatient_w / daysopen
 label var 	day_w "average daily outpatient from weekly data"
 
+	*Why don't you deal with the 0s here ? There are 15
+	*facilities in which there was no patient 
+	*while was open btw 5 to 7 days per week
+	*I would turn them to missing OR
+	*would use the "outpatient_abcdef" to gen 
+	*a similar variable, the monthly rate div by nb of weeks
+
+	*Why don't you use the variable add_out_seven/out_seven ?
+	*Daysopen:
+	*For further accuracy, i would check the bcheck_out_seven var
+	
 	*--------------------------------------------------------*
 	* 2.2 Estimation from daily data sources
 	*--------------------------------------------------------*
 gen 		day_d = (outpatient_dm1 + outpatient_dm2) / 2
 label var 	day_d "average daily outpatient from daily data"
 
+	*I would compare the number of days declared in outpatient_w
+	*with the nb of days declared in outpatient_dm1 and outpatient_dm2
+	*If _dm1 and _dm2 > _w, likely to be misreported
+	*Like 500098, 55569
+	*Maybe you should ignore the 0s and replace by missing
+	*Like 21319
+	
 	*--------------------------------------------------------*
 	* 2.3 Inputing daily in weekly as we trust weekly more
 	*--------------------------------------------------------*
@@ -245,6 +266,7 @@ replace 	day_w = day_d if mi(day_w) & !mi(day_d)
 ****************************************************************************************************
 tab outpatient_a if startyear == 2018 
 tab outpatient_b if startyear == 2018 
+
 *6 facilities have 0 and three facilities (18728, 510120, 588101) have positive numbers. 
 
 foreach month in a b {
@@ -254,6 +276,10 @@ foreach month in a b {
 	replace id_change_`month'  = 1  if startyear == 2018 & outpatient_`month' >  0 & !mi(outpatient_`month') & !mi(id_change_`month')
 	replace outpatient_`month' = .q if startyear == 2018 & outpatient_`month' >  0 & !mi(outpatient_`month')
 }
+
+*I saw a var asking to confirm if the facility started in 2018 followed 
+*by add_est_2018 est_2018 ! Maybe you should check that there is no
+*misreporting by comparing these variables
 
 ****************************************************************************************************
 *Part 4: Constructing daily averages variables from monthly source with no missing days
@@ -282,6 +308,10 @@ foreach month in a b c d e f g {
 		replace month_partial_complete 	= month_partial_complete + 1 	if !mi(outpatient_`month') 		
 		replace month_complete 			= month_complete + 1 			if !mi(outpatient_complete_`month') 	
 			}
+			
+		*So it means that a month can be both, complete
+		*and partial complete? And have different numbers?
+		*br month_complete month_partial_complete
 
 	*--------------------------------------------------------------*
 	* 4.2 Get the daily average variables from the complete months *
@@ -289,11 +319,14 @@ foreach month in a b c d e f g {
 
 	*Averaging over each month
 foreach month in a b c d e f g {
-	gen 	outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'' 	    if daysopen == 7  
+	gen 	outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'' 	  if daysopen == 7  
 	replace outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'_6dw'  if daysopen == 6 | mi(daysopen)  
 	replace outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'_5dw'  if daysopen == 5  
 	replace outpatient_complete_d_`month' = outpatient_complete_`month' / `days_`month'_4dw'  if daysopen <= 4  
 }
+
+	*Why do you have " | mi(dayopen) " on the 2 line?
+
 
 ****************************************************************************************************
 *Part 5: Inputing when some days are missing, for 5 or 10 missing days
@@ -371,6 +404,9 @@ tab month_miss10
 	replace outpatient_missall_a = .q if hfid == 555568 //more missing days than opening days
 	replace outpatient_missall_a = .q if hfid == 555587 //more missing days than opening days
 
+	*I guess I should trust you here ! I tried to check which "other source" you mean
+	*but failed
+	
 	*--------------------------------------------------------------*
 	* 6.2 Get the daily average variables from the non missing months *
 	*--------------------------------------------------------------*
@@ -399,6 +435,9 @@ global `type' day_w outpatient_`type'_d_a outpatient_`type'_d_b outpatient_`type
 	
 	}
 
+	*Why do you include day_w ? You do the average of 7 variables
+	*plus the weekly. To me it looks wrong
+	
 *Generating all the useful variables: mean, mean without the observation, absolute distance from the min to observation, relative distance from the min to observation
 	foreach type in complete miss5 miss10 missall {
 
@@ -422,7 +461,8 @@ global `type' day_w outpatient_`type'_d_a outpatient_`type'_d_b outpatient_`type
 
 		}
 
-
+	*Not a very transparent code here
+		
 *******Identifying outliers and replacing them with the mean without the observation. 3 main rules: 
 *1.Replace at most one observation per facility, the furthest one.
 *2.If observation is a max, then outliers when the relative distance to the mean without observation is more than 2
