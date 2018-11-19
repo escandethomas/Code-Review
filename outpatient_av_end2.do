@@ -77,9 +77,12 @@ set more off
 		global Av_Outpatient 	"${end_dt}/Intermediate/Averages_Outpatient_end.dta"				
 		}
 
+	if c(username) == "Julie" {
+		global  thimoRexa `"/users/`c(username)'/dropbox/Peer Review 2018/Thomas_Data"'
+	}
 
-		use "${Fees_Outpatient_final}", clear
-
+		*use "${Fees_Outpatient_final}", clear
+		use "${Fees_Outpatient_clean_end}", clear
 
 *Defining locals needed for the do file
 *Number of days per month depending on the number of opening days
